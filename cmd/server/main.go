@@ -84,6 +84,17 @@ func setupRouter() *gin.Engine {
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 
+	// Root - so base URL doesn't 404
+	router.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"app":     "MARVRON API",
+			"status":  "ok",
+			"health":  "/health",
+			"api":     "/api/v1",
+			"message": "Use /health for healthcheck, /api/v1 for API endpoints.",
+		})
+	})
+
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
