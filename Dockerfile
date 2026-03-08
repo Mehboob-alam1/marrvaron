@@ -6,16 +6,15 @@ WORKDIR /app
 # Install build dependencies
 RUN apk add --no-cache git
 
-# Copy go mod files (go.sum may not exist; go mod download will create it)
-COPY go.mod ./
+# Copy go mod files
+COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy source code
 COPY . .
-RUN go mod download
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server
+# Build (-mod=mod allows adding missing indirect deps to go.sum during build)
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -a -installsuffix cgo -o server ./cmd/server
 
 # Final stage
 FROM alpine:latest
