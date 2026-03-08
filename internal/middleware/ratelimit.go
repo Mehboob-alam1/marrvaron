@@ -33,9 +33,12 @@ func RateLimitMiddleware(limit int, window time.Duration) gin.HandlerFunc {
 			database.RedisClient.Expire(c.Request.Context(), key, window)
 		}
 
-		// Imposta header con informazioni rate limit
+		remaining := limit - int(count)
+		if remaining < 0 {
+			remaining = 0
+		}
 		c.Header("X-RateLimit-Limit", strconv.Itoa(limit))
-		c.Header("X-RateLimit-Remaining", strconv.Itoa(int(limit-count)))
+		c.Header("X-RateLimit-Remaining", strconv.Itoa(remaining))
 		c.Header("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(window).Unix(), 10))
 
 		// Verifica limite
