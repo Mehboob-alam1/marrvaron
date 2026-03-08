@@ -1,0 +1,14 @@
+# Nixpacks config for Railway (Go build)
+# Ensures correct Go version and build output
+
+[phases.setup]
+nixPkgs = ["go_1_21"]
+
+[phases.install]
+cmds = ["go mod download"]
+
+[phases.build]
+cmds = ["go build -o server ./cmd/server"]
+
+[start]
+cmd = "./server"

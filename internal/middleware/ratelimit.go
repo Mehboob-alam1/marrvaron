@@ -10,13 +10,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RateLimitMiddleware implementa rate limiting usando Redis
+// RateLimitMiddleware implements rate limiting using Redis.
+// If Redis is not connected, requests are allowed (no rate limiting).
 func RateLimitMiddleware(limit int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Usa IP address come chiave
+		if database.RedisClient == nil {
+			c.Next()
+			return
+		}
+
 		key := "ratelimit:" + c.ClientIP()
 
-		// Conta richieste
 		count, err := database.RedisClient.Incr(c.Request.Context(), key).Result()
 		if err != nil {
 			// Se Redis non è disponibile, continua senza rate limiting

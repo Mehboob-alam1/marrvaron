@@ -26,12 +26,13 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	Name     string
-	SSLMode  string
+	Host        string
+	Port        string
+	User        string
+	Password    string
+	Name        string
+	SSLMode     string
+	DatabaseURL string // DATABASE_URL (Railway); if set, used instead of individual fields
 }
 
 type RedisConfig struct {
@@ -39,6 +40,7 @@ type RedisConfig struct {
 	Port     string
 	Password string
 	DB       int
+	URL      string // REDIS_URL (Railway); if set, used instead of Host/Port
 }
 
 type JWTConfig struct {
@@ -69,20 +71,25 @@ func Load() error {
 	// Carica .env se esiste (non obbligatorio in produzione)
 	_ = godotenv.Load()
 
+	// PORT is set by Railway; SERVER_PORT for local
+	serverPort := getEnv("PORT", getEnv("SERVER_PORT", "8080"))
+
 	AppConfig = &Config{
 		Server: ServerConfig{
-			Port: getEnv("SERVER_PORT", "8080"),
+			Port: serverPort,
 			Host: getEnv("SERVER_HOST", "0.0.0.0"),
 		},
 		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "localhost"),
-			Port:     getEnv("DB_PORT", "5432"),
-			User:     getEnv("DB_USER", "marvaron_user"),
-			Password: getEnv("DB_PASSWORD", "marvaron_password"),
-			Name:     getEnv("DB_NAME", "marvaron_db"),
-			SSLMode:  getEnv("DB_SSLMODE", "disable"),
+			DatabaseURL: getEnv("DATABASE_URL", getEnv("POSTGRES_URL", "")),
+			Host:        getEnv("DB_HOST", "localhost"),
+			Port:        getEnv("DB_PORT", "5432"),
+			User:        getEnv("DB_USER", "marvaron_user"),
+			Password:    getEnv("DB_PASSWORD", "marvaron_password"),
+			Name:        getEnv("DB_NAME", "marvaron_db"),
+			SSLMode:     getEnv("DB_SSLMODE", "disable"),
 		},
 		Redis: RedisConfig{
+			URL:      getEnv("REDIS_URL", ""),
 			Host:     getEnv("REDIS_HOST", "localhost"),
 			Port:     getEnv("REDIS_PORT", "6379"),
 			Password: getEnv("REDIS_PASSWORD", ""),
@@ -157,6 +164,9 @@ func parseKafkaBrokers(brokers string) []string {
 }
 
 func (c *Config) GetDSN() string {
+	if c.Database.DatabaseURL != "" {
+		return c.Database.DatabaseURL
+	}
 	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		c.Database.Host,
 		c.Database.Port,
@@ -168,7 +178,15 @@ func (c *Config) GetDSN() string {
 }
 
 func (c *Config) GetRedisAddr() string {
+	if c.Redis.URL != "" {
+		return c.Redis.URL // Caller should use URL when set
+	}
 	return fmt.Sprintf("%s:%s", c.Redis.Host, c.Redis.Port)
+}
+
+// UseRedisURL returns true when REDIS_URL is set (e.g. on Railway).
+func (c *Config) UseRedisURL() bool {
+	return c.Redis.URL != ""
 }
 
 func (c *Config) GetJWTExpiry() time.Duration {

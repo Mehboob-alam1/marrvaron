@@ -73,6 +73,10 @@ docker-compose up -d
 go run ./cmd/server/main.go
 ```
 
+## Postman Collection
+
+A Postman collection for **Auth APIs** is in `postman/MARVRON_Auth_APIs.postman_collection.json`. Import it in Postman; set `base_url` (e.g. `http://localhost:8080`). After **Login** or **Register**, the token is saved automatically for protected requests. See `postman/README.md` for details.
+
 ## API Endpoints
 
 ### Authentication
@@ -102,6 +106,17 @@ go run ./cmd/server/main.go
 - `GET /api/v1/admin/dashboard` - Admin dashboard
 - `POST /api/v1/admin/admins` - Create admin user (Super Admin)
 - `GET /api/v1/admin/analytics` - Analytics
+
+## Deploy to Railway
+
+The app is configured for [Railway](https://railway.app). Use the `PORT`, `DATABASE_URL`, and `REDIS_URL` environment variables (Railway sets or provides these when you add Postgres/Redis).
+
+1. Push this repo to GitHub and connect it to a new Railway project.
+2. Add **PostgreSQL** and optionally **Redis** from the Railway dashboard.
+3. Set `JWT_SECRET`, `QR_ENCRYPTION_KEY`, `QR_SIGNATURE_SECRET`, and `ENVIRONMENT=production` in the service variables.
+4. Deploy; Railway uses `railway.toml` for build and start commands.
+
+See **[RAILWAY.md](RAILWAY.md)** for step-by-step deployment instructions.
 
 ## Development
 

@@ -15,11 +15,22 @@ var RedisClient *redis.Client
 var Ctx = context.Background()
 
 func ConnectRedis() error {
-	RedisClient = redis.NewClient(&redis.Options{
-		Addr:     config.AppConfig.GetRedisAddr(),
-		Password: config.AppConfig.Redis.Password,
-		DB:       config.AppConfig.Redis.DB,
-	})
+	var opts *redis.Options
+	if config.AppConfig.UseRedisURL() {
+		var err error
+		opts, err = redis.ParseURL(config.AppConfig.Redis.URL)
+		if err != nil {
+			return fmt.Errorf("failed to parse REDIS_URL: %w", err)
+		}
+	} else {
+		opts = &redis.Options{
+			Addr:     config.AppConfig.GetRedisAddr(),
+			Password: config.AppConfig.Redis.Password,
+			DB:       config.AppConfig.Redis.DB,
+		}
+	}
+
+	RedisClient = redis.NewClient(opts)
 
 	// Test connection
 	_, err := RedisClient.Ping(Ctx).Result()
@@ -35,20 +46,32 @@ func CloseRedis() error {
 	return RedisClient.Close()
 }
 
-// Cache helpers
+// Cache helpers (no-op if Redis is not connected)
 func SetCache(key string, value interface{}, expiration time.Duration) error {
+	if RedisClient == nil {
+		return nil
+	}
 	return RedisClient.Set(Ctx, key, value, expiration).Err()
 }
 
 func GetCache(key string) (string, error) {
+	if RedisClient == nil {
+		return "", redis.Nil
+	}
 	return RedisClient.Get(Ctx, key).Result()
 }
 
 func DeleteCache(key string) error {
+	if RedisClient == nil {
+		return nil
+	}
 	return RedisClient.Del(Ctx, key).Err()
 }
 
 func ExistsCache(key string) (bool, error) {
+	if RedisClient == nil {
+		return false, nil
+	}
 	count, err := RedisClient.Exists(Ctx, key).Result()
 	return count > 0, err
 }

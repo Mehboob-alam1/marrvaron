@@ -1,0 +1,242 @@
+{
+	"info": {
+		"_postman_id": "marvaron-auth-001",
+		"name": "MARVRON - Auth APIs",
+		"description": "Authentication endpoints for MARVRON backend. Set `base_url` (e.g. http://localhost:8080) in collection variables. Token is saved automatically after Login or Register.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8080"
+		},
+		{
+			"key": "token",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "Register",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if (pm.response.code === 201) {",
+							"    var json = pm.response.json();",
+							"    if (json.token) {",
+							"        pm.collectionVariables.set('token', json.token);",
+							"    }",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"password123\",\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\",\n  \"phone\": \"+1234567890\",\n  \"role\": \"customer\",\n  \"marketing_opt_in\": false\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/auth/register",
+					"host": ["{{base_url}}"],
+					"path": ["api", "v1", "auth", "register"]
+				},
+				"description": "Register a new user. Allowed roles: customer, distributor, courier."
+			}
+		},
+		{
+			"name": "Login",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if (pm.response.code === 200) {",
+							"    var json = pm.response.json();",
+							"    if (json.token) {",
+							"        pm.collectionVariables.set('token', json.token);",
+							"    }",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"password123\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/auth/login",
+					"host": ["{{base_url}}"],
+					"path": ["api", "v1", "auth", "login"]
+				},
+				"description": "Login with email and password. Returns JWT token (saved to collection variable 'token')."
+			}
+		},
+		{
+			"name": "Send OTP",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"identifier\": \"customer@example.com\",\n  \"method\": \"email\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/auth/otp/send",
+					"host": ["{{base_url}}"],
+					"path": ["api", "v1", "auth", "otp", "send"]
+				},
+				"description": "Send OTP to email or phone. Requires Redis. method: email | sms."
+			}
+		},
+		{
+			"name": "Verify OTP",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"if (pm.response.code === 200) {",
+							"    var json = pm.response.json();",
+							"    if (json.token) {",
+							"        pm.collectionVariables.set('token', json.token);",
+							"    }",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"identifier\": \"customer@example.com\",\n  \"otp\": \"123456\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/auth/otp/verify",
+					"host": ["{{base_url}}"],
+					"path": ["api", "v1", "auth", "otp", "verify"]
+				},
+				"description": "Verify OTP. Returns JWT if user exists (identifier = email or phone)."
+			}
+		},
+		{
+			"name": "Get Profile",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/v1/auth/profile",
+					"host": ["{{base_url}}"],
+					"path": ["api", "v1", "auth", "profile"]
+				},
+				"description": "Get current user profile. Requires Authorization: Bearer <token>."
+			}
+		},
+		{
+			"name": "Update Profile",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"first_name\": \"Jane\",\n  \"last_name\": \"Doe\",\n  \"phone\": \"+0987654321\",\n  \"marketing_opt_in\": true\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/auth/profile",
+					"host": ["{{base_url}}"],
+					"path": ["api", "v1", "auth", "profile"]
+				},
+				"description": "Update current user profile. All fields optional. Requires Bearer token."
+			}
+		},
+		{
+			"name": "Close Account",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/v1/auth/account",
+					"host": ["{{base_url}}"],
+					"path": ["api", "v1", "auth", "account"]
+				},
+				"description": "Deactivate current user account. Requires Bearer token."
+			}
+		},
+		{
+			"name": "Health Check",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/health",
+					"host": ["{{base_url}}"],
+					"path": ["health"]
+				},
+				"description": "Server health check. No auth required."
+			}
+		}
+	]
+}

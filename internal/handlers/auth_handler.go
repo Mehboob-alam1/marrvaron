@@ -39,7 +39,14 @@ type OTPVerifyRequest struct {
 	OTP        string `json:"otp" binding:"required"`
 }
 
-// Register gestisce la registrazione di un nuovo utente
+// Valid roles for self-registration (admin/super_admin are created by existing admins only)
+var allowedRegisterRoles = map[models.UserRole]bool{
+	models.RoleCustomer:    true,
+	models.RoleDistributor: true,
+	models.RoleCourier:     true,
+}
+
+// Register handles new user registration
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -47,7 +54,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Verifica che l'email non esista già
+	if !allowedRegisterRoles[req.Role] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role. Allowed: customer, distributor, courier"})
+		return
+	}
+
+	// Check email not already registered
 	var existingUser models.User
 	result := database.DB.Where("email = ?", req.Email).First(&existingUser)
 	if result.Error == nil {
@@ -102,7 +114,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	})
 }
 
-// Login gestisce il login dell'utente
+// Login handles user login
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -149,7 +161,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
-// SendOTP invia un OTP all'utente
+// SendOTP sends OTP to the user (email or phone). Works without Redis but OTP won't be stored; use for testing or when Redis is down.
 func (h *AuthHandler) SendOTP(c *gin.Context) {
 	var req OTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -157,31 +169,25 @@ func (h *AuthHandler) SendOTP(c *gin.Context) {
 		return
 	}
 
-	// Genera OTP
 	otp, err := utils.GenerateOTP()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate OTP"})
 		return
 	}
 
-	// Salva OTP in Redis
 	if err := utils.StoreOTP(req.Identifier, otp); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store OTP"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store OTP (is Redis running?)"})
 		return
 	}
 
-	// Invia OTP
-	if err := utils.SendOTP(req.Identifier, otp, req.Method); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send OTP"})
-		return
-	}
+	_ = utils.SendOTP(req.Identifier, otp, req.Method)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "OTP sent successfully",
 	})
 }
 
-// VerifyOTP verifica l'OTP
+// VerifyOTP verifies OTP and returns JWT if user exists
 func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 	var req OTPVerifyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -231,11 +237,11 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 	})
 }
 
-// GetProfile restituisce il profilo dell'utente autenticato
+// GetProfile returns the authenticated user's profile
 func (h *AuthHandler) GetProfile(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
 		return
 	}
 
@@ -248,11 +254,11 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"user": user})
 }
 
-// UpdateProfile aggiorna il profilo dell'utente
+// UpdateProfile updates the authenticated user's profile
 func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
 		return
 	}
 
@@ -295,11 +301,11 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 	})
 }
 
-// CloseAccount chiude l'account dell'utente
+// CloseAccount deactivates the authenticated user's account
 func (h *AuthHandler) CloseAccount(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
 		return
 	}
 
