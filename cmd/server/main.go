@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"marvaron/internal/config"
 	"marvaron/internal/database"
@@ -14,46 +15,62 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	dbRetryAttempts = 15
+	dbRetryDelay    = 2 * time.Second
+)
+
 func main() {
-	// Carica configurazione
 	if err := config.Load(); err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Connetti al database
-	if err := database.Connect(); err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+	router := setupRouter()
+
+	// Listen on all interfaces so healthcheck can reach us (e.g. Railway)
+	port := config.AppConfig.Server.Port
+	addr := ":" + port
+	log.Printf("Server starting on %s", addr)
+
+	// Start HTTP server immediately so /health responds within retry window
+	go func() {
+		if err := router.Run(addr); err != nil {
+			log.Fatalf("Server failed: %v", err)
+		}
+	}()
+
+	// Give the server a moment to bind
+	time.Sleep(100 * time.Millisecond)
+
+	// Connect to DB with retries (DB may not be ready when container starts)
+	var dbErr error
+	for i := 0; i < dbRetryAttempts; i++ {
+		dbErr = database.Connect()
+		if dbErr == nil {
+			break
+		}
+		log.Printf("Database connect attempt %d/%d failed: %v", i+1, dbRetryAttempts, dbErr)
+		time.Sleep(dbRetryDelay)
+	}
+	if dbErr != nil {
+		log.Fatalf("Failed to connect to database after %d attempts: %v", dbRetryAttempts, dbErr)
 	}
 	defer database.Close()
 
-	// Esegui migrations
 	if err := database.AutoMigrate(); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
 
-	// Connetti a Redis
 	if err := database.ConnectRedis(); err != nil {
-		log.Printf("Warning: Failed to connect to Redis: %v", err)
+		log.Printf("Warning: Redis unavailable: %v", err)
 	} else {
 		defer database.CloseRedis()
 	}
 
-	// Inizializza Kafka (opzionale)
-	// kafka.Init()
-	// defer kafka.Close()
-
-	// Crea super admin se non esiste
 	createSuperAdminIfNotExists()
 
-	// Setup router
-	router := setupRouter()
-
-	// Avvia server
-	addr := fmt.Sprintf("%s:%s", config.AppConfig.Server.Host, config.AppConfig.Server.Port)
-	log.Printf("Server starting on %s", addr)
-	if err := router.Run(addr); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
+	// Keep main alive
+	select {}
 }
 
 func setupRouter() *gin.Engine {
