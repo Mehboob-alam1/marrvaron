@@ -187,10 +187,7 @@ func (h *AuthHandler) SendOTP(c *gin.Context) {
 	}
 
 	if err := utils.StoreOTP(req.Identifier, otp); err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error":   "OTP is not available: Redis is required to store OTPs.",
-			"hint":    "On Railway: add Redis and set REDIS_URL in your service Variables (Add Reference → Redis → REDIS_URL). Or use email/password login instead.",
-		})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to store OTP"})
 		return
 	}
 

@@ -38,6 +38,7 @@ func AutoMigrate() error {
 		&models.User{},
 		&models.Distributor{},
 		&models.AdminPermission{},
+		&models.OTPRecord{},
 		&models.Product{},
 		&models.InventoryItem{},
 		&models.QRCode{},

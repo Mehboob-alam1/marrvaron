@@ -8,9 +8,12 @@ import (
 
 	"marvaron/internal/config"
 	"marvaron/internal/database"
+	"marvaron/internal/models"
+
+	"github.com/redis/go-redis/v9"
 )
 
-// GenerateOTP genera un OTP numerico
+// GenerateOTP generates a numeric OTP
 func GenerateOTP() (string, error) {
 	length := config.AppConfig.OTP.Length
 	max := big.NewInt(int64(1))
@@ -28,28 +31,62 @@ func GenerateOTP() (string, error) {
 	return otp, nil
 }
 
-// StoreOTP salva l'OTP in Redis con scadenza
+// StoreOTP stores OTP in Redis or DB (DB used when Redis is unavailable)
 func StoreOTP(identifier string, otp string) error {
-	key := fmt.Sprintf("otp:%s", identifier)
 	expiration := time.Duration(config.AppConfig.OTP.ExpiryMinutes) * time.Minute
-	return database.SetCache(key, otp, expiration)
+	key := fmt.Sprintf("otp:%s", identifier)
+
+	if database.RedisClient != nil {
+		if err := database.SetCache(key, otp, expiration); err == nil {
+			return nil
+		}
+	}
+
+	// Fallback: store in database
+	if database.DB != nil {
+		database.DB.Where("identifier = ?", identifier).Delete(&models.OTPRecord{})
+		record := models.OTPRecord{
+			Identifier: identifier,
+			OTP:        otp,
+			ExpiresAt:  time.Now().Add(expiration),
+		}
+		return database.DB.Create(&record).Error
+	}
+
+	return fmt.Errorf("no OTP storage available (Redis and DB)")
 }
 
-// VerifyOTP verifica l'OTP da Redis
+// VerifyOTP verifies OTP from Redis or DB
 func VerifyOTP(identifier string, otp string) (bool, error) {
 	key := fmt.Sprintf("otp:%s", identifier)
-	storedOTP, err := database.GetCache(key)
-	if err != nil {
-		return false, err
+
+	if database.RedisClient != nil {
+		storedOTP, err := database.GetCache(key)
+		if err == nil {
+			if storedOTP == otp {
+				_ = database.DeleteCache(key)
+				return true, nil
+			}
+			return false, nil
+		}
+		if err != redis.Nil {
+			return false, err
+		}
 	}
 
-	if storedOTP != otp {
-		return false, nil
+	// Fallback: verify from database
+	if database.DB != nil {
+		var record models.OTPRecord
+		err := database.DB.Where("identifier = ? AND otp = ? AND expires_at > ?", identifier, otp, time.Now()).
+			First(&record).Error
+		if err != nil {
+			return false, nil // invalid or expired OTP
+		}
+		_ = database.DB.Delete(&record)
+		return true, nil
 	}
 
-	// Elimina l'OTP dopo la verifica
-	_ = database.DeleteCache(key)
-	return true, nil
+	return false, fmt.Errorf("no OTP storage available")
 }
 
 // SendOTP invia l'OTP (da implementare con SMS/Email service)
