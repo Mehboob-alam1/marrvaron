@@ -76,6 +76,7 @@ This guide walks you through deploying the MARVRON Go backend to [Railway](https
 
 ## Troubleshooting
 
+- **Deployment crashed / 1/1 replicas never became healthy:** Usually the app exits because it cannot connect to the database. **Add PostgreSQL** (Step 2 above), then in your **backend service** → **Variables** → **Add Variable** → **Add Reference** → select the Postgres service’s **`DATABASE_URL`**. Redeploy. Check **Logs** for "Failed to connect to database" or "Set DATABASE_URL".
 - **Build fails:** Ensure `go.mod` is at repo root and `railway.toml` build command is `go build -o server ./cmd/server`.
 - **App crashes on start:** Check **Logs** in Railway. Often due to missing `DATABASE_URL` or invalid `JWT_SECRET` in production.
 - **502 Bad Gateway:** App may be listening on wrong port. The app uses `PORT` from the environment; do not set `SERVER_PORT` on Railway.

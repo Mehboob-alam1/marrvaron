@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 	"time"
 
 	"marvaron/internal/config"
@@ -20,26 +21,34 @@ const (
 )
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("panic recovered: %v", r)
+			os.Exit(1)
+		}
+	}()
+
 	if err := config.Load(); err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
 	router := setupRouter()
 
-	// Listen on all interfaces so healthcheck can reach us (e.g. Railway)
 	port := config.AppConfig.Server.Port
+	if port == "" {
+		port = "8080"
+	}
 	addr := ":" + port
 	log.Printf("Server starting on %s", addr)
 
-	// Start HTTP server immediately so /health responds within retry window
 	go func() {
 		if err := router.Run(addr); err != nil {
-			log.Fatalf("Server failed: %v", err)
+			log.Printf("Server failed: %v", err)
+			os.Exit(1)
 		}
 	}()
 
-	// Give the server a moment to bind
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	// Connect to DB with retries (DB may not be ready when container starts)
 	var dbErr error
@@ -52,6 +61,7 @@ func main() {
 		time.Sleep(dbRetryDelay)
 	}
 	if dbErr != nil {
+		log.Printf("FATAL: Could not connect to database. Set DATABASE_URL (or add Postgres in Railway) and ensure it is reachable.")
 		log.Fatalf("Failed to connect to database after %d attempts: %v", dbRetryAttempts, dbErr)
 	}
 	defer database.Close()
