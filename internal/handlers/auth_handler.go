@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"marvaron/internal/database"
@@ -86,9 +87,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	if err := database.DB.Create(&user).Error; err != nil {
+		errMsg := err.Error()
+		// If DB is pointing at localhost, DATABASE_URL is likely not set (e.g. on Railway)
+		if strings.Contains(errMsg, "localhost") || strings.Contains(errMsg, "connection refused") {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Database not configured. On Railway: add PostgreSQL, then in your service Variables add DATABASE_URL (Add Reference → Postgres → DATABASE_URL).",
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "Failed to create user",
-			"details": err.Error(),
+			"details": errMsg,
 		})
 		return
 	}
