@@ -26,6 +26,9 @@ func Connect() error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
+	// Ensure pgcrypto exists for gen_random_uuid() (PostgreSQL < 13)
+	_ = DB.Exec("CREATE EXTENSION IF NOT EXISTS pgcrypto").Error
+
 	log.Println("Database connected successfully")
 	return nil
 }
