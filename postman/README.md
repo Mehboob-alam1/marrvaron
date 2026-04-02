@@ -8,7 +8,7 @@
 
 ## Variables
 
-- **base_url**: API base URL (default: `http://localhost:8080`). For Railway use `https://your-app.up.railway.app`.
+- **base_url**: API base URL (default in the JSON file: `http://164.90.172.46:8080` for the VPS). For local use `http://localhost:8080`. For Railway use `https://your-app.up.railway.app`.
 - **token**: Set automatically after **Login** or **Register** (used as Bearer token for protected requests). You can also set it manually.
 
 To change `base_url`: Collection → **Variables** → set **Current value** for `base_url`.
@@ -22,7 +22,7 @@ To change `base_url`: Collection → **Variables** → set **Current value** for
 5. **Update Profile** – Uses stored token.
 6. **Close Account** – Uses stored token (deactivates account).
 
-**OTP (optional):** **Send OTP** then **Verify OTP**. Requires Redis and a valid user email/phone. Verify OTP returns a JWT and saves it to `token`.
+**OTP (optional):** **Send OTP** then **Verify OTP**. Works with Postgres (no Redis required). Verify OTP returns a JWT and saves it to `token`.
 
 ## Auth endpoints
 

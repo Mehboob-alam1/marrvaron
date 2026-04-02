@@ -1,0 +1,185 @@
+================================================================================
+  UBUNTU VPS – SET UP ANOTHER BACKEND (FROM START)
+  Replace ALL_CAPS placeholders with your values.
+================================================================================
+
+--- 1) LOG IN TO THE VM (from your Mac Terminal) -----------------------------
+
+  ssh root@YOUR_SERVER_IP
+
+  Password: (the one your provider gave you)
+
+  Tip: Use Mac Terminal.app or iTerm so Ctrl+O in nano works if you edit files.
+
+
+--- 2) UPDATE THE SERVER ------------------------------------------------------
+
+  apt update && apt upgrade -y
+
+
+--- 3) INSTALL DOCKER + GIT -----------------------------------------------------
+
+  apt install -y docker.io docker-compose-v2 git
+  systemctl enable docker --now
+
+  docker --version
+
+
+--- 4) FIREWALL (ufw – already on Ubuntu; you ENABLE it) -----------------------
+
+  IMPORTANT: Allow SSH first, or you can lock yourself out.
+
+  ufw allow 22/tcp
+  ufw allow YOUR_APP_PORT/tcp          e.g. 8080 or 3000
+  ufw enable
+  ufw status
+
+  Also open the same port in your CLOUD PANEL (DigitalOcean / etc. firewall).
+
+
+--- 5) CLONE YOUR BACKEND REPO ------------------------------------------------
+
+  mkdir -p /opt
+  cd /opt
+  git clone https://github.com/YOUR_USER/YOUR_REPO.git
+  cd YOUR_REPO_FOLDER_NAME
+
+
+--- 6) DATABASE (if you use Docker Postgres like marrvaron) -------------------
+
+  Option A – docker compose in this repo:
+    docker compose up -d postgres
+    (adjust service name in compose file)
+
+  Note Postgres user / password / database name from compose or .env.
+
+
+--- 7) BUILD YOUR APP IMAGE ----------------------------------------------------
+
+  If Dockerfile is in repo root:
+
+    docker build -t YOUR_IMAGE_NAME .
+
+  Example: docker build -t my-api .
+
+
+--- 8) FIND DOCKER NETWORK (Postgres container must be on same network) --------
+
+  docker ps
+  docker inspect YOUR_POSTGRES_CONTAINER_NAME -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}'
+
+  Save the output, e.g. myproject_default
+
+
+--- 9) RUN YOUR API CONTAINER --------------------------------------------------
+
+  Remove old container if redeploying:
+
+    docker rm -f YOUR_CONTAINER_NAME 2>/dev/null
+
+  Set network variable:
+
+    NET=$(docker inspect YOUR_POSTGRES_CONTAINER_NAME -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+    echo "$NET"
+
+  Run (ONE line, or use $NET – do not type YOUR_NETWORK literally):
+
+    docker run -d --name YOUR_CONTAINER_NAME --restart unless-stopped \
+      --network "$NET" \
+      -p YOUR_APP_PORT:YOUR_APP_PORT \
+      -e KEY=value ... \
+      YOUR_IMAGE_NAME
+
+  For Go/marrvaron-style env (example – change names/secrets):
+
+    docker run -d --name my-api --restart unless-stopped --network "$NET" \
+      -e ENVIRONMENT=production \
+      -e DB_HOST=postgres \
+      -e DB_PORT=5432 \
+      -e DB_USER=dbuser \
+      -e DB_PASSWORD=dbpass \
+      -e DB_NAME=dbname \
+      -e DB_SSLMODE=disable \
+      -p 8080:8080 \
+      my-api
+
+  If your app reads DATABASE_URL instead, pass:
+    -e DATABASE_URL=postgresql://user:pass@postgres:5432/dbname?sslmode=disable
+
+
+--- 10) TEST ON THE SERVER ----------------------------------------------------
+
+  curl -s http://127.0.0.1:YOUR_APP_PORT/health
+  docker logs YOUR_CONTAINER_NAME
+
+
+--- 11) TEST FROM YOUR MAC -----------------------------------------------------
+
+  curl http://YOUR_SERVER_IP:YOUR_APP_PORT/health
+
+  If this fails but step 10 works: fix ufw + cloud firewall.
+
+
+--- 12) AFTER GIT PUSH (no auto-deploy unless you set CI/CD) -----------------
+
+  ssh root@YOUR_SERVER_IP
+  cd /opt/YOUR_REPO_FOLDER_NAME
+  git pull origin main
+  docker build -t YOUR_IMAGE_NAME .
+  docker rm -f YOUR_CONTAINER_NAME
+  NET=$(docker inspect YOUR_POSTGRES_CONTAINER_NAME -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+  docker run -d ... (same docker run as step 9)
+
+
+--- 13) REMOVE A PROJECT COMPLETELY FROM THIS VM ------------------------------
+
+  Stop and remove API container:
+    docker rm -f YOUR_CONTAINER_NAME
+
+  Stop Postgres (and other compose services) for that project:
+    cd /opt/YOUR_REPO_FOLDER_NAME
+    docker compose down -v          # -v removes volumes (DELETES DB DATA)
+
+  Remove image (optional):
+    docker rmi YOUR_IMAGE_NAME
+
+  Remove code (optional):
+    rm -rf /opt/YOUR_REPO_FOLDER_NAME
+
+  Remove unused Docker data (optional, careful):
+    docker system prune -a
+
+
+--- 14) LOGIN / AUTH APIS (example – JWT backends like MARVRON) ---------------
+
+  Base URL: http://YOUR_SERVER_IP:YOUR_APP_PORT/api/v1
+
+  Register (example JSON):
+    POST /api/v1/auth/register
+    Body: { "email": "...", "password": "min 8 chars", "role": "customer",
+            "first_name": "...", "last_name": "..." }
+
+  Login:
+    POST /api/v1/auth/login
+    Body: { "email": "...", "password": "..." }
+    Response includes "token" (JWT).
+
+  Protected routes:
+    Header: Authorization: Bearer YOUR_JWT_TOKEN
+
+  Import Postman collection if you have one; set collection variable base_url to:
+    http://YOUR_SERVER_IP:YOUR_APP_PORT
+
+
+================================================================================
+  QUICK CHECKLIST FOR “ANOTHER BACKEND”
+================================================================================
+  [ ] SSH works
+  [ ] Docker + git installed
+  [ ] ufw: 22 + app port; cloud firewall same port
+  [ ] Repo cloned under /opt
+  [ ] Database running (compose or managed)
+  [ ] Image built
+  [ ] Container on same Docker network as DB; correct DB_HOST / DATABASE_URL
+  [ ] curl from server and from Mac OK
+================================================================================

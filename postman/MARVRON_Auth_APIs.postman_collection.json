@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "marvaron-auth-001",
 		"name": "MARVRON - Auth APIs",
-		"description": "Authentication endpoints for MARVRON backend. base_url points to Railway; change it in collection variables for local (e.g. http://localhost:8080). Token is saved automatically after Login or Register.",
+		"description": "Authentication endpoints for MARVRON backend. Default base_url is the VPS (Docker on port 8080). Change collection variable base_url for Railway, local (http://localhost:8080), or another host. Token is saved automatically after Login or Register.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {
@@ -18,7 +18,7 @@
 	"variable": [
 		{
 			"key": "base_url",
-			"value": "https://marrvaron-production.up.railway.app"
+			"value": "http://164.90.172.46:8080"
 		},
 		{
 			"key": "token",

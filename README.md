@@ -118,6 +118,10 @@ The app is configured for [Railway](https://railway.app). Use the `PORT`, `DATAB
 
 See **[RAILWAY.md](RAILWAY.md)** for step-by-step deployment instructions.
 
+## Deploy to AWS
+
+See **[docs/AWS_DEPLOY.md](docs/AWS_DEPLOY.md)** — **Lightsail** or **EC2** (Ubuntu + Docker). Step-by-step for both; App Runner / ECS for later.
+
 ## Development
 
 ### Run tests
