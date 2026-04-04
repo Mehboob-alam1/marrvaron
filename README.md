@@ -120,7 +120,20 @@ See **[RAILWAY.md](RAILWAY.md)** for step-by-step deployment instructions.
 
 ## Deploy to AWS
 
-See **[docs/AWS_DEPLOY.md](docs/AWS_DEPLOY.md)** — **Lightsail** or **EC2** (Ubuntu + Docker). Step-by-step for both; App Runner / ECS for later.
+Full guide: **[docs/AWS_DEPLOY.md](docs/AWS_DEPLOY.md)** (Lightsail, EC2, RDS, App Runner / ECS overview).
+
+### EC2 (quick)
+
+1. **EC2** → Launch instance → **Ubuntu 24.04 LTS** → instance type (e.g. `t3.micro`) → **key pair** (download `.pem` to your Mac; your IAM user needs `ec2:CreateKeyPair` or use an **existing** key).
+2. **Security group**: allow **SSH (22)** from your IP; allow **Custom TCP 8080** for the API (or restrict by IP).
+3. Launch → copy **Public IPv4**.
+4. SSH: `ssh -i /path/to/key.pem ubuntu@YOUR_PUBLIC_IP` (user is `ubuntu` on the official Ubuntu AMI).
+5. On the instance: install **Docker** + **git**, clone this repo, run **Postgres** (`docker compose up -d postgres`) and the API container — **copy-paste commands** are in [docs/AWS_DEPLOY.md](docs/AWS_DEPLOY.md) (**EC2** section).
+6. Optional: **Elastic IP** for a fixed public address; **RDS PostgreSQL** instead of Docker Postgres for production.
+
+**Health check:** `GET http://YOUR_PUBLIC_IP:8080/health`
+
+**Live EC2 API (current deploy):** base URL `http://98.92.77.116:8080` — health: `GET http://98.92.77.116:8080/health`. Change this if the instance public IP changes (unless you use an Elastic IP).
 
 ## Development
 

@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "marvaron-auth-001",
 		"name": "MARVRON - Auth APIs",
-		"description": "Authentication endpoints for MARVRON backend. Default base_url is the VPS (Docker on port 8080). Change collection variable base_url for Railway, local (http://localhost:8080), or another host. Token is saved automatically after Login or Register.",
+		"description": "Authentication endpoints for MARVRON backend.\n\n**API base URL (frontend / env):** `http://98.92.77.116:8080` — use as `base_url` in Postman (collection variable) or `VITE_API_URL` / `NEXT_PUBLIC_API_URL` etc. No trailing slash.\n\nExample: `POST http://98.92.77.116:8080/api/v1/auth/login`\n\nChange `base_url` in Collection → Variables for other environments (local: http://localhost:8080). Token is saved automatically after Login or Register.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {
@@ -18,7 +18,7 @@
 	"variable": [
 		{
 			"key": "base_url",
-			"value": "http://164.90.172.46:8080"
+			"value": "http://98.92.77.116:8080"
 		},
 		{
 			"key": "token",

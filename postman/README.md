@@ -1,5 +1,23 @@
 # Postman – MARVRON Auth APIs
 
+## For frontend developers (copy-paste)
+
+| Use | Value |
+|-----|--------|
+| **API base URL** | `http://98.92.77.116:8080` |
+| **Health** | `GET /health` → full URL: `http://98.92.77.116:8080/health` |
+| **Auth API prefix** | `/api/v1/auth` |
+
+Examples (append to base, no double slashes):
+
+- Register: `POST http://98.92.77.116:8080/api/v1/auth/register`
+- Login: `POST http://98.92.77.116:8080/api/v1/auth/login`
+- Profile: `GET http://98.92.77.116:8080/api/v1/auth/profile` (Bearer JWT)
+
+**CORS:** If the browser blocks requests, the backend must allow your frontend origin (configure CORS on the server for production).
+
+Import **`MARVRON_Auth_APIs.postman_collection.json`** — collection variable **`base_url`** is already set to the URL above.
+
 ## Import
 
 1. Open Postman.
@@ -8,7 +26,7 @@
 
 ## Variables
 
-- **base_url**: API base URL (default in the JSON file: `http://164.90.172.46:8080` for the VPS). For local use `http://localhost:8080`. For Railway use `https://your-app.up.railway.app`.
+- **base_url**: API base URL (default in the JSON file: `http://98.92.77.116:8080` on AWS EC2). For local use `http://localhost:8080`. For Railway use `https://your-app.up.railway.app`.
 - **token**: Set automatically after **Login** or **Register** (used as Bearer token for protected requests). You can also set it manually.
 
 To change `base_url`: Collection → **Variables** → set **Current value** for `base_url`.
