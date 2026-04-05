@@ -376,14 +376,32 @@ curl http://YOUR_PUBLIC_IP:8080/health
 
 If you stop/start the instance, the **public IP can change**. In **EC2** → **Elastic IPs** → **Allocate** → **Associate** with your instance to get a **fixed** IP.
 
-### 9) Updates after `git push`
+### 9) Updates after `git push` (manual)
+
+SSH in, pull, rebuild, restart the API container (Postgres can keep running).
+
+**Amazon Linux** (`ec2-user`):
 
 ```bash
-ssh -i ~/Downloads/your-key.pem ubuntu@YOUR_PUBLIC_IP
-cd /opt/marrvaron && sudo git pull && sudo docker build -t marrvaron-api .
+ssh -i ~/Downloads/your-key.pem ec2-user@YOUR_PUBLIC_IP
+cd /opt/marrvaron
+git pull origin main
+sudo docker build -t marrvaron-api .
+NET=$(sudo docker inspect marvaron_postgres -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
 sudo docker rm -f marrvaron-api
-# run the same docker run ... command as in step 6 (with $NET if using local Postgres)
+sudo docker run -d --name marrvaron-api --restart unless-stopped --network "$NET" \
+  -e ENVIRONMENT=production -e DB_HOST=postgres -e DB_PORT=5432 \
+  -e DB_USER=marvaron_user -e DB_PASSWORD=marvaron_password -e DB_NAME=marvaron_db \
+  -e DB_SSLMODE=disable \
+  -e JWT_SECRET=use-the-same-secret-as-before \
+  -e 'QR_ENCRYPTION_KEY=exactly-32-characters-long-key!!' \
+  -e QR_SIGNATURE_SECRET=use-the-same-secret-as-before \
+  -p 8080:8080 marrvaron-api
 ```
+
+Use the **same** `JWT_SECRET` and QR secrets as the first deploy, or existing tokens can break. Then: `curl -s http://127.0.0.1:8080/health`.
+
+**Ubuntu** on EC2: same commands; SSH as `ubuntu` and use your `.pem` path.
 
 ---
 

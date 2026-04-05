@@ -58,6 +58,14 @@ func AutoMigrate() error {
 	return nil
 }
 
+// BackfillUserRolesArray sets roles[] from legacy role column where roles was never populated
+func BackfillUserRolesArray() error {
+	if DB == nil {
+		return nil
+	}
+	return DB.Exec(`UPDATE users SET roles = ARRAY[role::text]::text[] WHERE roles IS NULL`).Error
+}
+
 func Close() error {
 	sqlDB, err := DB.DB()
 	if err != nil {

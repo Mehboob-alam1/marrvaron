@@ -13,6 +13,7 @@ import (
 	"marvaron/internal/utils"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lib/pq"
 )
 
 const (
@@ -69,6 +70,9 @@ func main() {
 	if err := database.AutoMigrate(); err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
+	if err := database.BackfillUserRolesArray(); err != nil {
+		log.Printf("Warning: roles backfill: %v", err)
+	}
 
 	if err := database.ConnectRedis(); err != nil {
 		log.Printf("Warning: Redis unavailable: %v", err)
@@ -124,6 +128,11 @@ func setupRouter() *gin.Engine {
 		// Autenticazione (pubblica)
 		auth := v1.Group("/auth")
 		{
+			// Multi-step: profile → password (+ referral) → verify-phone OTP
+			auth.POST("/register/profile", authHandler.RegisterProfile)
+			auth.POST("/register/password", authHandler.RegisterPassword)
+			auth.POST("/register/verify-phone", authHandler.RegisterVerifyPhone)
+			// Legacy single-step register (password + role in one call)
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
 			auth.POST("/otp/send", authHandler.SendOTP)
@@ -137,6 +146,8 @@ func setupRouter() *gin.Engine {
 			authProtected.GET("/profile", authHandler.GetProfile)
 			authProtected.PUT("/profile", authHandler.UpdateProfile)
 			authProtected.DELETE("/account", authHandler.CloseAccount)
+			authProtected.POST("/switch-role", authHandler.SwitchRole)
+			authProtected.POST("/roles/enable", authHandler.EnableRole)
 		}
 
 		// QR Code (scansione pubblica, altre operazioni protette)
@@ -255,13 +266,16 @@ func createSuperAdminIfNotExists() {
 		}
 
 		superAdmin := models.User{
-			Email:        "admin@marvaron.com",
-			PasswordHash: passwordHash,
-			FirstName:    "Super",
-			LastName:     "Admin",
-			Role:         models.RoleSuperAdmin,
-			IsActive:     true,
-			IsEmailVerified: true,
+			Email:                 "admin@marvaron.com",
+			PasswordHash:          passwordHash,
+			FirstName:             "Super",
+			LastName:              "Admin",
+			FullName:              "Super Admin",
+			Role:                  models.RoleSuperAdmin,
+			Roles:                 pq.StringArray{string(models.RoleSuperAdmin)},
+			RegistrationComplete:  true,
+			IsActive:              true,
+			IsEmailVerified:       true,
 		}
 
 		if err := database.DB.Create(&superAdmin).Error; err != nil {

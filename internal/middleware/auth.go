@@ -40,6 +40,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		c.Set("user_id", claims.UserID)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
+		c.Set("roles", claims.Roles)
 
 		c.Next()
 	}
@@ -94,6 +95,7 @@ func OptionalAuthMiddleware() gin.HandlerFunc {
 					c.Set("user_id", claims.UserID)
 					c.Set("email", claims.Email)
 					c.Set("role", claims.Role)
+					c.Set("roles", claims.Roles)
 				}
 			}
 		}

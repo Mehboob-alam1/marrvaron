@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -14,8 +15,9 @@ const (
 	RoleSuperAdmin  UserRole = "super_admin"
 	RoleAdmin       UserRole = "admin"
 	RoleDistributor UserRole = "distributor"
-	RoleCustomer    UserRole = "customer"
+	RoleCustomer    UserRole = "customer" // simple user: orders, purchases
 	RoleCourier     UserRole = "courier"
+	RoleVendor      UserRole = "vendor"
 )
 
 // User rappresenta un utente nel sistema
@@ -23,10 +25,21 @@ type User struct {
 	ID                uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
 	Email             string    `gorm:"uniqueIndex;not null" json:"email"`
 	Phone             string    `gorm:"index" json:"phone"`
-	PasswordHash      string    `gorm:"not null" json:"-"`
+	PasswordHash      string    `json:"-"` // empty until password step of registration
+	FullName          string    `json:"full_name"`
 	FirstName         string    `json:"first_name"`
 	LastName          string    `json:"last_name"`
-	Role              UserRole  `gorm:"type:varchar(20);not null;index" json:"role"`
+	StreetAddress     string    `json:"street_address"`
+	City              string    `json:"city"`
+	StateRegion       string    `json:"state"`
+	PostCode          string    `json:"post_code"`
+	Country           string    `json:"country"`
+	// Roles: all roles this user may use; Role is the active context for JWT / middleware
+	Roles             pq.StringArray `gorm:"type:text[]" json:"roles"`
+	Role              UserRole  `gorm:"type:varchar(20);not null;index" json:"active_role"`
+	ReferralCode      *string   `gorm:"uniqueIndex" json:"referral_code,omitempty"` // set when registration completes
+	ReferredByUserID  *uuid.UUID `gorm:"type:uuid" json:"referred_by_user_id,omitempty"`
+	RegistrationComplete bool   `gorm:"default:true" json:"registration_complete"`
 	IsActive          bool      `gorm:"default:true" json:"is_active"`
 	IsEmailVerified   bool      `gorm:"default:false" json:"is_email_verified"`
 	IsPhoneVerified   bool      `gorm:"default:false" json:"is_phone_verified"`
@@ -89,7 +102,63 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 	if u.ID == uuid.Nil {
 		u.ID = uuid.New()
 	}
+	u.normalizeRolesAndActive()
 	return nil
+}
+
+// AfterFind backfills roles from legacy single Role column when roles array is empty
+func (u *User) AfterFind(tx *gorm.DB) error {
+	if len(u.Roles) == 0 && u.Role != "" {
+		u.Roles = pq.StringArray{string(u.Role)}
+	}
+	if u.Role == "" && len(u.Roles) > 0 {
+		u.Role = UserRole(u.Roles[0])
+	}
+	return nil
+}
+
+func (u *User) normalizeRolesAndActive() {
+	if len(u.Roles) == 0 {
+		if u.Role != "" {
+			u.Roles = pq.StringArray{string(u.Role)}
+			return
+		}
+		u.Role = RoleCustomer
+		u.Roles = pq.StringArray{string(RoleCustomer)}
+		return
+	}
+	if u.Role == "" {
+		u.Role = UserRole(u.Roles[0])
+		return
+	}
+	for _, x := range u.Roles {
+		if UserRole(x) == u.Role {
+			return
+		}
+	}
+	u.Role = UserRole(u.Roles[0])
+}
+
+// HasRole reports whether the user may assume this role (switch context to it)
+func (u *User) HasRole(r UserRole) bool {
+	for _, x := range u.Roles {
+		if UserRole(x) == r {
+			return true
+		}
+	}
+	return false
+}
+
+// RolesAsStrings returns roles as a plain []string for JWT / JSON
+func (u *User) RolesAsStrings() []string {
+	out := make([]string, 0, len(u.Roles))
+	for _, x := range u.Roles {
+		out = append(out, x)
+	}
+	if len(out) == 0 && u.Role != "" {
+		return []string{string(u.Role)}
+	}
+	return out
 }
 
 func (d *Distributor) BeforeCreate(tx *gorm.DB) error {
