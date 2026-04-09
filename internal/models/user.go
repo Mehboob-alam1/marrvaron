@@ -15,7 +15,8 @@ const (
 	RoleSuperAdmin  UserRole = "super_admin"
 	RoleAdmin       UserRole = "admin"
 	RoleDistributor UserRole = "distributor"
-	RoleCustomer    UserRole = "customer" // simple user: orders, purchases
+	RoleUser        UserRole = "user"     // default signup: common end user
+	RoleCustomer    UserRole = "customer" // legacy end user (treated like user)
 	RoleCourier     UserRole = "courier"
 	RoleVendor      UserRole = "vendor"
 )
@@ -36,7 +37,7 @@ type User struct {
 	Country           string    `json:"country"`
 	// Roles: all roles this user may use; Role is the active context for JWT / middleware
 	Roles             pq.StringArray `gorm:"type:text[]" json:"roles"`
-	Role              UserRole  `gorm:"type:varchar(20);not null;index" json:"active_role"`
+	Role              UserRole  `gorm:"type:varchar(30);not null;index" json:"active_role"`
 	ReferralCode      *string   `gorm:"uniqueIndex" json:"referral_code,omitempty"` // set when registration completes
 	ReferredByUserID  *uuid.UUID `gorm:"type:uuid" json:"referred_by_user_id,omitempty"`
 	RegistrationComplete bool   `gorm:"default:true" json:"registration_complete"`
@@ -123,8 +124,8 @@ func (u *User) normalizeRolesAndActive() {
 			u.Roles = pq.StringArray{string(u.Role)}
 			return
 		}
-		u.Role = RoleCustomer
-		u.Roles = pq.StringArray{string(RoleCustomer)}
+		u.Role = RoleUser
+		u.Roles = pq.StringArray{string(RoleUser)}
 		return
 	}
 	if u.Role == "" {

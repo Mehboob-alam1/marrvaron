@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "marvaron-auth-001",
 		"name": "MARVRON - Auth APIs",
-		"description": "# MARVRON Auth API\n\n## Base URL\nSet **`base_url`** (Collection → Variables). Default: EC2 deploy. No trailing slash.\n\n## Collection variables\n| Variable | Use |\n|----------|-----|\n| `base_url` | e.g. `http://localhost:8080` or your server |\n| `token` | JWT after login / register complete (auto-saved) |\n| `registration_token` | Short-lived token after step 1 (auto-saved) |\n\n## JWT\nAccess token includes **`role`** (active) and **`roles`** (all enabled). After **Switch active role** or **Enable role**, save the new `token` from the response.\n\n## Flows\n1. **Multi-step signup:** Register profile → Register password (Bearer `registration_token`) → Verify phone OTP → JWT in `token`.\n2. **Legacy:** `POST .../register` with password + role in one request.\n3. **Login:** `POST .../login` with email + password (requires completed registration).\n\n## Roles (self-service)\n`customer` (default), `distributor`, `courier`, `vendor`. Use **Enable role** then **Switch active role**. `admin` / `super_admin` are not self-service.\n\n## OTP\nStored in **Redis** if configured, else **PostgreSQL** (`OTPRecord`). Dev: OTP is printed in **server logs**.",
+		"description": "# MARVRON Auth API\n\n## Variables\n| Variable | Use |\n|----------|-----|\n| `base_url` | e.g. `http://localhost:8080` (no trailing slash) |\n| `token` | User JWT (saved after verify-otp / login) |\n| `admin_token` | Admin JWT for role-request moderation |\n| `role_request_id` | UUID from `GET .../role-requests` |\n\n## Flow\n1. **Signup:** `POST .../auth/signup` → OTP emailed (or server logs in dev).\n2. **Verify:** `POST .../auth/signup/verify-otp` → JWT in `token`.\n3. **Login:** `POST .../auth/login` (email verified + registration complete).\n4. **Roles:** `POST .../auth/roles/request` then admin approves via `/admin/role-requests/...`.\n5. **Switch context:** `POST .../auth/switch-role` with an approved role.\n\nDefault role is **`user`**. Elevated roles: `distributor`, `courier`, `vendor` (admin approval).",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {
@@ -18,143 +18,51 @@
 	"variable": [
 		{
 			"key": "base_url",
-			"value": "http://98.92.77.116:8080"
+			"value": "http://localhost:8080"
 		},
 		{
 			"key": "token",
 			"value": ""
 		},
 		{
-			"key": "registration_token",
+			"key": "admin_token",
+			"value": ""
+		},
+		{
+			"key": "role_request_id",
 			"value": ""
 		}
 	],
 	"item": [
 		{
-			"name": "01 Registration (multi-step)",
-			"description": "Default role: **customer**. Step 2–3 use `Authorization: Bearer {{registration_token}}` or pass `registration_token` in JSON.",
+			"name": "Signup",
 			"item": [
 				{
-					"name": "1 Register profile",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 201) {",
-									"    var json = pm.response.json();",
-									"    if (json.registration_token) {",
-									"        pm.collectionVariables.set('registration_token', json.registration_token);",
-									"    }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
+					"name": "Signup",
 					"request": {
 						"auth": { "type": "noauth" },
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"full_name\": \"Jane Doe\",\n  \"phone\": \"+15551234567\",\n  \"email\": \"jane@example.com\",\n  \"street_address\": \"123 Main St\",\n  \"city\": \"New York\",\n  \"state\": \"NY\",\n  \"post_code\": \"10001\",\n  \"country\": \"US\",\n  \"marketing_opt_in\": false\n}"
+							"raw": "{\n  \"full_name\": \"Jane Doe\",\n  \"phone\": \"+15551234567\",\n  \"email\": \"jane@example.com\",\n  \"street_address\": \"123 Main St\",\n  \"city\": \"New York\",\n  \"state\": \"NY\",\n  \"post_code\": \"10001\",\n  \"country\": \"US\",\n  \"password\": \"password123\",\n  \"referral_code\": \"\",\n  \"marketing_opt_in\": false\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/api/v1/auth/register/profile",
+							"raw": "{{base_url}}/api/v1/auth/signup",
 							"host": ["{{base_url}}"],
-							"path": ["api", "v1", "auth", "register", "profile"]
+							"path": ["api", "v1", "auth", "signup"]
 						},
-						"description": "`POST /api/v1/auth/register/profile`\n\nRequired: full_name, phone, email, street_address, city, state, post_code, country.\n\n**Response:** `registration_token`, `user_id`, `next_step: password`."
+						"description": "`POST /api/v1/auth/signup`\n\nCreates user (role **user**), sends email OTP. Response: `user_id`, `created_at`."
 					}
 				},
 				{
-					"name": "2 Register password + referral",
+					"name": "Signup verify OTP",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
 								"exec": [
 									"if (pm.response.code === 200) {",
-									"    var json = pm.response.json();",
-									"    if (json.registration_token) {",
-									"        pm.collectionVariables.set('registration_token', json.registration_token);",
-									"    }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": { "type": "noauth" },
-						"method": "POST",
-						"header": [
-							{ "key": "Content-Type", "value": "application/json" },
-							{ "key": "Authorization", "value": "Bearer {{registration_token}}" }
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"password\": \"password123\",\n  \"referral_code\": \"\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/v1/auth/register/password",
-							"host": ["{{base_url}}"],
-							"path": ["api", "v1", "auth", "register", "password"]
-						},
-						"description": "`POST /api/v1/auth/register/password`\n\nBearer: **registration_token** (or body `registration_token`).\n\nSets password; optional **referral_code** (another user's code). Sends OTP to **phone** from step 1. Call again to **resend OTP** if password already set."
-					}
-				},
-				{
-					"name": "3 Verify phone (complete signup)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    var json = pm.response.json();",
-									"    if (json.token) {",
-									"        pm.collectionVariables.set('token', json.token);",
-									"    }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": { "type": "noauth" },
-						"method": "POST",
-						"header": [
-							{ "key": "Content-Type", "value": "application/json" },
-							{ "key": "Authorization", "value": "Bearer {{registration_token}}" }
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"otp\": \"000000\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/v1/auth/register/verify-phone",
-							"host": ["{{base_url}}"],
-							"path": ["api", "v1", "auth", "register", "verify-phone"]
-						},
-						"description": "`POST /api/v1/auth/register/verify-phone`\n\nBearer: **registration_token**. Body: **otp** from server logs (dev) or SMS provider.\n\n**Response:** JWT → saved to `token`; user gets **referral_code**."
-					}
-				}
-			]
-		},
-		{
-			"name": "02 Session (login & legacy register)",
-			"item": [
-				{
-					"name": "Register (legacy one-step)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 201) {",
 									"    var json = pm.response.json();",
 									"    if (json.token) { pm.collectionVariables.set('token', json.token); }",
 									"}"
@@ -169,16 +77,21 @@
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"password123\",\n  \"full_name\": \"John Doe\",\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\",\n  \"phone\": \"+1234567890\",\n  \"street_address\": \"1 Market St\",\n  \"city\": \"San Francisco\",\n  \"state\": \"CA\",\n  \"post_code\": \"94105\",\n  \"country\": \"US\",\n  \"role\": \"customer\",\n  \"referral_code\": \"\",\n  \"marketing_opt_in\": false\n}"
+							"raw": "{\n  \"email\": \"jane@example.com\",\n  \"otp\": \"000000\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/api/v1/auth/register",
+							"raw": "{{base_url}}/api/v1/auth/signup/verify-otp",
 							"host": ["{{base_url}}"],
-							"path": ["api", "v1", "auth", "register"]
+							"path": ["api", "v1", "auth", "signup", "verify-otp"]
 						},
-						"description": "`POST /api/v1/auth/register`\n\n**role:** `customer` | `distributor` | `courier` | `vendor`\n\nOptional: address fields, **referral_code** (referrer's code). Returns JWT immediately."
+						"description": "`POST /api/v1/auth/signup/verify-otp`\n\nUse OTP from email (dev: server logs). Saves JWT to `token`."
 					}
-				},
+				}
+			]
+		},
+		{
+			"name": "Session",
+			"item": [
 				{
 					"name": "Login",
 					"event": [
@@ -201,80 +114,64 @@
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"email\": \"customer@example.com\",\n  \"password\": \"password123\"\n}"
+							"raw": "{\n  \"email\": \"jane@example.com\",\n  \"password\": \"password123\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/v1/auth/login",
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "auth", "login"]
 						},
-						"description": "`POST /api/v1/auth/login`\n\nEmail + password. Fails if multi-step registration not finished (`registration_complete`)."
+						"description": "`POST /api/v1/auth/login`\n\nRequires verified email and completed registration."
 					}
 				}
 			]
 		},
 		{
-			"name": "03 OTP (general)",
-			"description": "For logged-in-style OTP flows (not the register/verify-phone step). Requires completed registration for **verify** to return JWT.",
+			"name": "Password reset",
 			"item": [
 				{
-					"name": "Send OTP",
+					"name": "Forgot password",
 					"request": {
 						"auth": { "type": "noauth" },
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"identifier\": \"customer@example.com\",\n  \"method\": \"email\"\n}"
+							"raw": "{\n  \"email\": \"jane@example.com\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/api/v1/auth/otp/send",
+							"raw": "{{base_url}}/api/v1/auth/forgot-password",
 							"host": ["{{base_url}}"],
-							"path": ["api", "v1", "auth", "otp", "send"]
+							"path": ["api", "v1", "auth", "forgot-password"]
 						},
-						"description": "`POST /api/v1/auth/otp/send`\n\n**identifier:** email or phone. **method:** `email` | `sms` (logged in dev)."
+						"description": "`POST /api/v1/auth/forgot-password`\n\nSends reset link if account exists. Set `APP_PUBLIC_URL` / SMTP for real email."
 					}
 				},
 				{
-					"name": "Verify OTP",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    var json = pm.response.json();",
-									"    if (json.token) { pm.collectionVariables.set('token', json.token); }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
+					"name": "Reset password",
 					"request": {
 						"auth": { "type": "noauth" },
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"identifier\": \"customer@example.com\",\n  \"otp\": \"123456\"\n}"
+							"raw": "{\n  \"token\": \"<paste_token_from_email_query_string>\",\n  \"new_password\": \"newpassword123\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/api/v1/auth/otp/verify",
+							"raw": "{{base_url}}/api/v1/auth/reset-password",
 							"host": ["{{base_url}}"],
-							"path": ["api", "v1", "auth", "otp", "verify"]
+							"path": ["api", "v1", "auth", "reset-password"]
 						},
-						"description": "`POST /api/v1/auth/otp/verify`\n\nReturns JWT only if user exists **and** registration is complete."
+						"description": "`POST /api/v1/auth/reset-password`\n\n`token` from email link (`?token=...`). Valid 1 hour."
 					}
 				}
 			]
 		},
 		{
-			"name": "04 Profile & account",
-			"description": "Uses collection **Bearer {{token}}**.",
+			"name": "Profile & account",
 			"item": [
 				{
-					"name": "Get Profile",
+					"name": "Get profile",
 					"request": {
 						"method": "GET",
 						"header": [],
@@ -283,11 +180,11 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "auth", "profile"]
 						},
-						"description": "`GET /api/v1/auth/profile`\n\nReturns `user`, `roles`, `active_role`."
+						"description": "`GET /api/v1/auth/profile`"
 					}
 				},
 				{
-					"name": "Update Profile",
+					"name": "Update profile",
 					"request": {
 						"method": "PUT",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -300,11 +197,11 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "auth", "profile"]
 						},
-						"description": "`PUT /api/v1/auth/profile`\n\nAll fields optional: full_name, first_name, last_name, phone, street_address, city, state, post_code, country, marketing_opt_in."
+						"description": "`PUT /api/v1/auth/profile`"
 					}
 				},
 				{
-					"name": "Close Account",
+					"name": "Close account",
 					"request": {
 						"method": "DELETE",
 						"header": [],
@@ -313,106 +210,29 @@
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "auth", "account"]
 						},
-						"description": "`DELETE /api/v1/auth/account`\n\nSoft-deactivates user (`is_active: false`)."
+						"description": "`DELETE /api/v1/auth/account`"
 					}
 				}
 			]
 		},
 		{
-			"name": "05 Roles",
-			"description": "**Enable role** adds distributor/courier/vendor. **Switch active role** sets JWT `role` to one you already have.",
+			"name": "Roles",
 			"item": [
 				{
-					"name": "Enable role — distributor",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    var json = pm.response.json();",
-									"    if (json.token) { pm.collectionVariables.set('token', json.token); }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
+					"name": "Request role",
 					"request": {
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"role\": \"distributor\"\n}"
+							"raw": "{\n  \"requested_role\": \"distributor\"\n}"
 						},
 						"url": {
-							"raw": "{{base_url}}/api/v1/auth/roles/enable",
+							"raw": "{{base_url}}/api/v1/auth/roles/request",
 							"host": ["{{base_url}}"],
-							"path": ["api", "v1", "auth", "roles", "enable"]
+							"path": ["api", "v1", "auth", "roles", "request"]
 						},
-						"description": "`POST /api/v1/auth/roles/enable` — body `{ \"role\": \"distributor\" }`. Creates **Distributor** row if missing."
-					}
-				},
-				{
-					"name": "Enable role — courier",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    var json = pm.response.json();",
-									"    if (json.token) { pm.collectionVariables.set('token', json.token); }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"role\": \"courier\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/v1/auth/roles/enable",
-							"host": ["{{base_url}}"],
-							"path": ["api", "v1", "auth", "roles", "enable"]
-						},
-						"description": "`POST /api/v1/auth/roles/enable` — `{ \"role\": \"courier\" }`"
-					}
-				},
-				{
-					"name": "Enable role — vendor",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"if (pm.response.code === 200) {",
-									"    var json = pm.response.json();",
-									"    if (json.token) { pm.collectionVariables.set('token', json.token); }",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"role\": \"vendor\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/v1/auth/roles/enable",
-							"host": ["{{base_url}}"],
-							"path": ["api", "v1", "auth", "roles", "enable"]
-						},
-						"description": "`POST /api/v1/auth/roles/enable` — `{ \"role\": \"vendor\" }`"
+						"description": "`POST /api/v1/auth/roles/request`\n\n`requested_role`: `distributor` | `courier` | `vendor`. Admin must approve."
 					}
 				},
 				{
@@ -436,23 +256,101 @@
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"active_role\": \"customer\"\n}"
+							"raw": "{\n  \"active_role\": \"user\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/v1/auth/switch-role",
 							"host": ["{{base_url}}"],
 							"path": ["api", "v1", "auth", "switch-role"]
 						},
-						"description": "`POST /api/v1/auth/switch-role`\n\n**active_role** must be in your **roles** (e.g. customer, distributor, courier, vendor). Cannot switch to admin here. Returns new JWT."
+						"description": "`POST /api/v1/auth/switch-role`\n\n`active_role` must already be in your `roles` (e.g. `user`, `distributor`). Returns new JWT."
 					}
 				}
 			]
 		},
 		{
-			"name": "06 Health",
+			"name": "Admin — role requests",
+			"description": "Use **Bearer Token** = `{{admin_token}}` on each request (Authorization tab → Type Bearer → `{{admin_token}}`).",
 			"item": [
 				{
-					"name": "Health Check",
+					"name": "List role requests",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var json = pm.response.json();",
+									"    if (json.role_requests && json.role_requests.length > 0 && json.role_requests[0].id) {",
+									"        pm.collectionVariables.set('role_request_id', json.role_requests[0].id);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{admin_token}}", "type": "string" }]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/role-requests?status=pending",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "role-requests"],
+							"query": [{ "key": "status", "value": "pending" }]
+						},
+						"description": "`GET /api/v1/admin/role-requests?status=pending`"
+					}
+				},
+				{
+					"name": "Approve role request",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{admin_token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/role-requests/{{role_request_id}}/approve",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "role-requests", "{{role_request_id}}", "approve"]
+						},
+						"description": "`POST /api/v1/admin/role-requests/:id/approve`"
+					}
+				},
+				{
+					"name": "Reject role request",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [{ "key": "token", "value": "{{admin_token}}", "type": "string" }]
+						},
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"note\": \"Optional reason\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/v1/admin/role-requests/{{role_request_id}}/reject",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "admin", "role-requests", "{{role_request_id}}", "reject"]
+						},
+						"description": "`POST /api/v1/admin/role-requests/:id/reject`"
+					}
+				}
+			]
+		},
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "Health check",
 					"request": {
 						"auth": { "type": "noauth" },
 						"method": "GET",
@@ -462,7 +360,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["health"]
 						},
-						"description": "`GET /health` — no auth."
+						"description": "`GET /health`"
 					}
 				}
 			]

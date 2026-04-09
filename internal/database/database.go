@@ -38,6 +38,7 @@ func AutoMigrate() error {
 		&models.User{},
 		&models.Distributor{},
 		&models.AdminPermission{},
+		&models.RoleRequest{},
 		&models.OTPRecord{},
 		&models.Product{},
 		&models.InventoryItem{},
@@ -64,6 +65,14 @@ func BackfillUserRolesArray() error {
 		return nil
 	}
 	return DB.Exec(`UPDATE users SET roles = ARRAY[role::text]::text[] WHERE roles IS NULL`).Error
+}
+
+// BackfillLegacyEmailVerified marks existing completed accounts as email-verified so login keeps working after signup OTP is enforced for new users.
+func BackfillLegacyEmailVerified() error {
+	if DB == nil {
+		return nil
+	}
+	return DB.Exec(`UPDATE users SET is_email_verified = true WHERE registration_complete = true AND is_email_verified = false`).Error
 }
 
 func Close() error {

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"marvaron/internal/config"
@@ -89,10 +90,16 @@ func VerifyOTP(identifier string, otp string) (bool, error) {
 	return false, fmt.Errorf("no OTP storage available")
 }
 
-// SendOTP invia l'OTP (da implementare con SMS/Email service)
+// SendOTP delivers the OTP by email or logs for SMS / unknown methods.
 func SendOTP(identifier string, otp string, method string) error {
-	// TODO: Implementare invio OTP via SMS o Email
-	// Per ora solo log
-	fmt.Printf("OTP %s inviato a %s via %s\n", otp, identifier, method)
-	return nil
+	switch strings.ToLower(strings.TrimSpace(method)) {
+	case "email":
+		return SendOTPEmail(identifier, otp)
+	case "sms":
+		fmt.Printf("OTP %s -> SMS to %s (configure SMS provider)\n", otp, identifier)
+		return nil
+	default:
+		fmt.Printf("OTP %s inviato a %s via %s\n", otp, identifier, method)
+		return nil
+	}
 }

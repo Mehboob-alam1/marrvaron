@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"marvaron/internal/database"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type AdminHandler struct{}
@@ -54,13 +56,16 @@ func (h *AdminHandler) CreateAdmin(c *gin.Context) {
 
 	// Crea utente admin
 	user := models.User{
-		Email:        req.Email,
-		PasswordHash: passwordHash,
-		FirstName:    req.FirstName,
-		LastName:     req.LastName,
-		Phone:        req.Phone,
-		Role:         models.RoleAdmin,
-		IsActive:     true,
+		Email:                 req.Email,
+		PasswordHash:          passwordHash,
+		FirstName:             req.FirstName,
+		LastName:              req.LastName,
+		Phone:                 req.Phone,
+		Role:                  models.RoleAdmin,
+		Roles:                 pq.StringArray{string(models.RoleAdmin)},
+		IsActive:              true,
+		RegistrationComplete:  true,
+		IsEmailVerified:       true,
 	}
 
 	if err := database.DB.Create(&user).Error; err != nil {
@@ -265,6 +270,137 @@ func (h *AdminHandler) ApproveDistributor(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Distributor approved successfully",
 		"distributor": distributor,
+	})
+}
+
+// ListRoleRequests returns role upgrade requests (filter with ?status=pending).
+func (h *AdminHandler) ListRoleRequests(c *gin.Context) {
+	status := strings.TrimSpace(c.Query("status"))
+	q := database.DB.Model(&models.RoleRequest{}).Preload("User").Order("created_at DESC")
+	if status != "" {
+		q = q.Where("status = ?", status)
+	}
+	var list []models.RoleRequest
+	if err := q.Find(&list).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list requests"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"role_requests": list})
+}
+
+// ApproveRoleRequest grants the requested role to the user (and approves distributor record when applicable).
+func (h *AdminHandler) ApproveRoleRequest(c *gin.Context) {
+	id := c.Param("id")
+	reqUUID, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request id"})
+		return
+	}
+
+	var rr models.RoleRequest
+	if err := database.DB.Preload("User").First(&rr, reqUUID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Role request not found"})
+		return
+	}
+	if rr.Status != models.RoleRequestPending {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Request is not pending"})
+		return
+	}
+
+	adminID, _ := c.Get("user_id")
+	adminUUID, _ := adminID.(uuid.UUID)
+	now := time.Now()
+
+	var user models.User
+	if err := database.DB.First(&user, rr.UserID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	if !user.HasRole(rr.RequestedRole) {
+		next := make(pq.StringArray, 0, len(user.Roles)+1)
+		next = append(next, user.Roles...)
+		next = append(next, string(rr.RequestedRole))
+		user.Roles = next
+	}
+
+	if rr.RequestedRole == models.RoleDistributor {
+		var d models.Distributor
+		if err := database.DB.Where("user_id = ?", user.ID).First(&d).Error; err != nil {
+			d = models.Distributor{
+				UserID:     user.ID,
+				IsApproved: true,
+				ApprovedAt: &now,
+				ApprovedBy: &adminUUID,
+			}
+			database.DB.Create(&d)
+		} else {
+			d.IsApproved = true
+			d.ApprovedAt = &now
+			d.ApprovedBy = &adminUUID
+			database.DB.Save(&d)
+		}
+	}
+
+	rr.Status = models.RoleRequestApproved
+	rr.ReviewedBy = &adminUUID
+	rr.ReviewedAt = &now
+	if err := database.DB.Save(&rr).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update request"})
+		return
+	}
+	if err := database.DB.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user roles"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "Role request approved",
+		"role_request": rr,
+		"user":         user,
+	})
+}
+
+// RejectRoleRequest declines a pending role request.
+func (h *AdminHandler) RejectRoleRequest(c *gin.Context) {
+	id := c.Param("id")
+	reqUUID, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request id"})
+		return
+	}
+
+	var body struct {
+		Note string `json:"note"`
+	}
+	_ = c.ShouldBindJSON(&body)
+
+	var rr models.RoleRequest
+	if err := database.DB.First(&rr, reqUUID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Role request not found"})
+		return
+	}
+	if rr.Status != models.RoleRequestPending {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Request is not pending"})
+		return
+	}
+
+	adminID, _ := c.Get("user_id")
+	adminUUID, _ := adminID.(uuid.UUID)
+	now := time.Now()
+
+	rr.Status = models.RoleRequestRejected
+	rr.ReviewedBy = &adminUUID
+	rr.ReviewedAt = &now
+	rr.AdminNote = body.Note
+	if err := database.DB.Save(&rr).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update request"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "Role request rejected",
+		"role_request": rr,
 	})
 }
 

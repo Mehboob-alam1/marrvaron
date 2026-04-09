@@ -73,6 +73,9 @@ func main() {
 	if err := database.BackfillUserRolesArray(); err != nil {
 		log.Printf("Warning: roles backfill: %v", err)
 	}
+	if err := database.BackfillLegacyEmailVerified(); err != nil {
+		log.Printf("Warning: email verified backfill: %v", err)
+	}
 
 	if err := database.ConnectRedis(); err != nil {
 		log.Printf("Warning: Redis unavailable: %v", err)
@@ -128,13 +131,18 @@ func setupRouter() *gin.Engine {
 		// Autenticazione (pubblica)
 		auth := v1.Group("/auth")
 		{
-			// Multi-step: profile → password (+ referral) → verify-phone OTP
+			// Primary signup: all fields + password → email OTP → verify
+			auth.POST("/signup", authHandler.Signup)
+			auth.POST("/signup/verify-otp", authHandler.SignupVerifyOTP)
+			// Multi-step (legacy): profile → password (+ referral) → email OTP
 			auth.POST("/register/profile", authHandler.RegisterProfile)
 			auth.POST("/register/password", authHandler.RegisterPassword)
 			auth.POST("/register/verify-phone", authHandler.RegisterVerifyPhone)
-			// Legacy single-step register (password + role in one call)
+			// Legacy single-step register (always role "user")
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+			auth.POST("/forgot-password", authHandler.ForgotPassword)
+			auth.POST("/reset-password", authHandler.ResetPassword)
 			auth.POST("/otp/send", authHandler.SendOTP)
 			auth.POST("/otp/verify", authHandler.VerifyOTP)
 		}
@@ -147,7 +155,7 @@ func setupRouter() *gin.Engine {
 			authProtected.PUT("/profile", authHandler.UpdateProfile)
 			authProtected.DELETE("/account", authHandler.CloseAccount)
 			authProtected.POST("/switch-role", authHandler.SwitchRole)
-			authProtected.POST("/roles/enable", authHandler.EnableRole)
+			authProtected.POST("/roles/request", authHandler.RequestRole)
 		}
 
 		// QR Code (scansione pubblica, altre operazioni protette)
@@ -235,6 +243,9 @@ func setupRouter() *gin.Engine {
 			admin.GET("/price-quotes", adminHandler.GetPriceQuotes)
 			admin.PUT("/price-quotes/:id", adminHandler.UpdatePriceQuote)
 			admin.POST("/distributors/:id/approve", adminHandler.ApproveDistributor)
+			admin.GET("/role-requests", adminHandler.ListRoleRequests)
+			admin.POST("/role-requests/:id/approve", adminHandler.ApproveRoleRequest)
+			admin.POST("/role-requests/:id/reject", adminHandler.RejectRoleRequest)
 			admin.POST("/qr/badge", adminHandler.BadgeQRCode)
 		}
 

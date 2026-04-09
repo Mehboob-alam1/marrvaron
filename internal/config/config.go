@@ -4,20 +4,32 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	Server     ServerConfig
-	Database   DatabaseConfig
-	Redis      RedisConfig
-	JWT        JWTConfig
-	QR         QRConfig
-	Kafka      KafkaConfig
-	OTP        OTPConfig
+	Server      ServerConfig
+	Database    DatabaseConfig
+	Redis       RedisConfig
+	JWT         JWTConfig
+	QR          QRConfig
+	Kafka       KafkaConfig
+	OTP         OTPConfig
+	Email       EmailConfig
+	AppPublicURL string // base URL for password-reset links (e.g. https://app.example.com)
 	Environment string
+}
+
+// EmailConfig optional SMTP; when unset, email helpers log content only (dev-friendly).
+type EmailConfig struct {
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUser     string
+	SMTPPassword string
+	From         string
 }
 
 type ServerConfig struct {
@@ -113,6 +125,14 @@ func Load() error {
 			ExpiryMinutes: getEnvAsInt("OTP_EXPIRY_MINUTES", 10),
 			Length:        getEnvAsInt("OTP_LENGTH", 6),
 		},
+		Email: EmailConfig{
+			SMTPHost:     getEnv("SMTP_HOST", ""),
+			SMTPPort:     getEnv("SMTP_PORT", "587"),
+			SMTPUser:     getEnv("SMTP_USER", ""),
+			SMTPPassword: getEnv("SMTP_PASSWORD", ""),
+			From:         getEnv("SMTP_FROM", ""),
+		},
+		AppPublicURL: strings.TrimRight(getEnv("APP_PUBLIC_URL", getEnv("FRONTEND_URL", "")), "/"),
 		Environment: getEnv("ENVIRONMENT", "development"),
 	}
 

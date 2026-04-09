@@ -11,7 +11,11 @@ import (
 	"github.com/google/uuid"
 )
 
-const registrationIssuer = "marvaron-registration"
+const (
+	registrationIssuer   = "marvaron-registration"
+	passwordResetIssuer  = "marvaron-password-reset"
+	passwordResetHours   = 1
+)
 
 type Claims struct {
 	UserID uuid.UUID       `json:"user_id"`
@@ -76,6 +80,42 @@ func ParseRegistrationToken(tokenString string) (uuid.UUID, error) {
 		return uuid.Nil, errors.New("invalid registration token")
 	}
 	if claims.Issuer != registrationIssuer {
+		return uuid.Nil, errors.New("invalid token type")
+	}
+	uid, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return uid, nil
+}
+
+// GeneratePasswordResetToken issues a short-lived JWT used only to reset the password.
+func GeneratePasswordResetToken(userID uuid.UUID) (string, error) {
+	expirationTime := time.Now().Add(passwordResetHours * time.Hour)
+	claims := jwt.RegisteredClaims{
+		ExpiresAt: jwt.NewNumericDate(expirationTime),
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		NotBefore: jwt.NewNumericDate(time.Now()),
+		Issuer:    passwordResetIssuer,
+		Subject:   userID.String(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims)
+	return token.SignedString([]byte(config.AppConfig.JWT.Secret))
+}
+
+// ParsePasswordResetToken validates a password-reset JWT and returns the user ID.
+func ParsePasswordResetToken(tokenString string) (uuid.UUID, error) {
+	claims := &jwt.RegisteredClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return []byte(config.AppConfig.JWT.Secret), nil
+	})
+	if err != nil || !token.Valid {
+		return uuid.Nil, errors.New("invalid reset token")
+	}
+	if claims.Issuer != passwordResetIssuer {
 		return uuid.Nil, errors.New("invalid token type")
 	}
 	uid, err := uuid.Parse(claims.Subject)
